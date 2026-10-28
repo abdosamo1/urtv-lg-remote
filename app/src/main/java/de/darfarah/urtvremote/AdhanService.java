@@ -40,6 +40,7 @@ public class AdhanService extends Service {
             } catch (Throwable t) {
                 log("خطأ: " + t);
             } finally {
+                stopListening();
                 if (wifi != null && wifi.isHeld()) wifi.release();
                 if (wl != null && wl.isHeld()) wl.release();
                 if (!test) Alarms.update(getApplicationContext(), false);   // the next adhan
@@ -110,7 +111,10 @@ public class AdhanService extends Service {
         log("الصوت " + Times.arabic(String.valueOf(p.volume())) + (vol != null ? " (كان " + Times.arabic(String.valueOf(vol[0])) + ")" : ""));
 
         // 4. the adhan on تلفزيونك
-        boolean launched = tv.launch(Tv.APP_ID, new JSONObject().put("adhan", test ? "test" : "now"));
+        String phone = wasOff ? listen() : null;   // the TV tells us here when someone uses it
+        JSONObject params = new JSONObject().put("adhan", test ? "test" : "now");
+        if (phone != null) params.put("phone", phone);
+        boolean launched = tv.launch(Tv.APP_ID, params);
         log(launched ? "فتحت تلفزيونك للأذان" : "ما قدرت أفتح تلفزيونك (هل التطبيق منزّل؟)");
         if (!launched) { restore(tv, vol); tv.close(); return; }
 
@@ -127,13 +131,55 @@ public class AdhanService extends Service {
         if (!tv.isOpen() && !(tv.connect(ip) && tv.register(key, false) != null)) { log("انقطع الاتصال بعد الأذان"); return; }
         now = tv.foregroundApp();
 
-        // 6. after it
-        restore(tv, vol);
+        // 6. after it (the volume is checked before it is put back)
+        int[] volEnd = tv.volume();
+        boolean volChanged = volEnd != null && volEnd[0] >= 0 && volEnd[0] != p.volume();
+        if (volChanged) touched = true;   // someone set the volume: keep theirs
+        stopListening();
+        if (!volChanged) restore(tv, vol);
         if (!Tv.APP_ID.equals(now) && !now.isEmpty()) { log("انتهى · غيّرت التطبيق، تركت الشاشة متل ما هي"); tv.close(); return; }
+        if (wasOff && touched) { log("انتهى · حدا استعمل الشاشة، تركتها شغّالة"); tv.close(); return; }
         if (wasOff && p.offAfter()) { tv.turnOff(); log("انتهى · طفيت الشاشة متل ما كانت"); }
         else if (p.backToApp() && !before.isEmpty() && !Tv.APP_ID.equals(before)) { tv.launch(before, null); log("انتهى · رجعت لـ " + before); }
         else log("انتهى");
         tv.close();
+    }
+
+    // ---------------------------------------------------------------- «someone pressed a key on the TV»
+
+    private volatile boolean touched;
+    private java.net.ServerSocket server;
+
+    /** "ip:port" the TV app pings on every key press during the adhan; null if no Wi-Fi address */
+    private String listen() {
+        try {
+            String ip = null;
+            for (java.net.NetworkInterface ni : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (java.net.InetAddress a : java.util.Collections.list(ni.getInetAddresses())) {
+                    if (a instanceof java.net.Inet4Address && a.isSiteLocalAddress()) ip = a.getHostAddress();
+                }
+            }
+            if (ip == null) return null;
+            server = new java.net.ServerSocket(0);
+            final java.net.ServerSocket ss = server;
+            new Thread(() -> {
+                while (!ss.isClosed()) {
+                    try (java.net.Socket c = ss.accept()) {
+                        if (!touched) log("حدا كبس على ريموت الشاشة");
+                        touched = true;
+                        c.getOutputStream().write("HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n".getBytes("UTF-8"));
+                    } catch (Exception ignored) {}
+                }
+            }).start();
+            return ip + ":" + server.getLocalPort();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void stopListening() {
+        try { if (server != null) server.close(); } catch (Exception ignored) {}
     }
 
     /** really on: «Active», or (a TV that doesn't say) something in the foreground */
