@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'de.darfarah.urtvremote'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'de.darfarah.urtvremote'
+        minSdk 21
+        targetSdk 33
+        // every CI build installs over the previous one
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName "1.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
+    }
+
+    signingConfigs {
+        // one fixed key (CI decodes it from keystore.b64), so every new APK installs over the old one
+        fixed {
+            storeFile file('remote.jks')
+            storePassword 'urtvremote'
+            keyAlias 'remote'
+            keyPassword 'urtvremote'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixed
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
