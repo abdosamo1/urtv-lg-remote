@@ -65,28 +65,41 @@ public class AdhanService extends Service {
         if (key.isEmpty()) { log("الموبايل مو مقترن بالشاشة: افتح التطبيق واكبس «اقتران»"); return; }
 
         Tv tv = new Tv();
-        // 1. is it on? (with Quick Start+ the TV may answer while in standby)
+        // 1. is it on? (with Quick Start+ the TV answers on the network even in standby, so ask its power state)
         String state = "";
         boolean reached = tv.connect(ip) && tv.register(key, false) != null;
         if (reached) state = tv.powerState();
-        boolean wasOff = !reached || !Tv.isOn(state);
+        boolean wasOff = !reached || !really(tv, state);
         log(reached ? "الشاشة ترد · الحالة: " + (state.isEmpty() ? "؟" : state) : "الشاشة ما ترد (مطفية؟)");
 
-        // 2. wake it
+        // 2. wake it: the magic packet every 3 s, until the TV says «Active» (90 s at most)
         if (wasOff) {
-            if ("Screen Off".equals(state)) tv.turnOnScreen();
-            long end = System.currentTimeMillis() + 75_000;
+            long end = System.currentTimeMillis() + 90_000;
             boolean on = false;
+            String last = state;
+            int tries = 0;
             while (System.currentTimeMillis() < end && !on) {
                 Tv.wake(mac, ip);
-                if (tv.isOpen()) tv.turnOn();
+                if (reached && tv.isOpen()) {
+                    if ("Screen Off".equals(state)) tv.turnOnScreen(); else tv.turnOn();
+                }
+                tries++;
                 Thread.sleep(3000);
-                if (!tv.isOpen()) reached = tv.connect(ip) && tv.register(key, false) != null;
-                if (tv.isOpen()) { state = tv.powerState(); on = Tv.isOn(state); }
+                if (!reached || !tv.isOpen()) reached = tv.connect(ip) && tv.register(key, false) != null;
+                if (reached) {
+                    state = tv.powerState();
+                    if (!state.equals(last)) { log("الحالة: " + (state.isEmpty() ? "؟" : state)); last = state; }
+                    on = really(tv, state);
+                }
             }
-            if (!on) { log(mac.isEmpty() ? "ما قدرت أشغّلها: عنوان MAC ناقص (اعمل اقتران مرة تانية)" : "ما قدرت أشغّلها: تأكد من «التشغيل عبر Wi-Fi» بالشاشة"); tv.close(); return; }
+            if (!on) {
+                log(mac.isEmpty() ? "ما قدرت أشغّلها: عنوان MAC ناقص (اعمل اقتران مرة تانية)"
+                    : "ما قدرت أشغّلها بعد " + Times.arabic(String.valueOf(tries)) + " محاولة: تأكد من «التشغيل عبر Wi-Fi / الموبايل» بإعدادات الشاشة");
+                tv.close();
+                return;
+            }
             log("اشتغلت الشاشة");
-            Thread.sleep(4000);   // let the home screen settle
+            Thread.sleep(5000);   // let it settle
         }
 
         // 3. what is on, the sound
@@ -121,6 +134,12 @@ public class AdhanService extends Service {
         else if (p.backToApp() && !before.isEmpty() && !Tv.APP_ID.equals(before)) { tv.launch(before, null); log("انتهى · رجعت لـ " + before); }
         else log("انتهى");
         tv.close();
+    }
+
+    /** really on: «Active», or (a TV that doesn't say) something in the foreground */
+    private static boolean really(Tv tv, String state) {
+        if ("Active".equals(state)) return true;
+        return state.isEmpty() && !tv.foregroundApp().isEmpty();
     }
 
     private void restore(Tv tv, int[] vol) {

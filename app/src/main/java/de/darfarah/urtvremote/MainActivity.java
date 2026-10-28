@@ -149,7 +149,7 @@ public class MainActivity extends Activity {
         Intent s = new Intent(this, AdhanService.class).putExtra("prayer", -1).putExtra("test", true);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(s); else startService(s);
         toast("عم جرّب… شوف «آخر مرة» تحت");
-        for (int i = 1; i <= 12; i++) ui.postDelayed(this::refresh, i * 5000L);
+        for (int i = 1; i <= 80; i++) ui.postDelayed(this::refresh, i * 5000L);   // the whole run (up to ~7 min)
     }
 
     private void battery() {
