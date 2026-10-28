@@ -68,7 +68,7 @@ public class MainActivity extends Activity {
         header("الأذان");
         adhanOn = toggle("تشغيل الشاشة للأذان", p.adhanOn());
         fajr = toggle("أذان الفجر (شغّله كمان بإعدادات الشاشة)", p.fajr());
-        volume = field("مستوى الصوت وقت الأذان", String.valueOf(p.volume()), InputType.TYPE_CLASS_NUMBER);
+        volume = field("مستوى الصوت (إذا ما وصل من إعدادات الشاشة)", String.valueOf(p.volume()), InputType.TYPE_CLASS_NUMBER);
         minutes = field("مدة الأذان بالدقائق (بعدها يرجع كل شي)", String.valueOf(p.minutes()), InputType.TYPE_CLASS_NUMBER);
         offAfter = toggle("طفّي الشاشة بعد الأذان إذا كانت مطفية", p.offAfter());
         backToApp = toggle("رجّع التطبيق اللي كان شغّال", p.backToApp());

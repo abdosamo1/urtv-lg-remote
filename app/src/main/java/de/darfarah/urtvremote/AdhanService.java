@@ -103,20 +103,24 @@ public class AdhanService extends Service {
             Thread.sleep(5000);   // let it settle
         }
 
-        // 3. what is on, the sound
+        // 3. what is on, the sound before
         String before = wasOff ? "" : tv.foregroundApp();
         int[] vol = tv.volume();
         tv.setMute(false);
-        tv.setVolume(p.volume());
-        log("الصوت " + Times.arabic(String.valueOf(p.volume())) + (vol != null ? " (كان " + Times.arabic(String.valueOf(vol[0])) + ")" : ""));
 
-        // 4. the adhan on تلفزيونك
-        String phone = wasOff ? listen() : null;   // the TV tells us here when someone uses it
+        // 4. the adhan on تلفزيونك; it tells us (here) the volume picked in its settings, and every key press
+        String phone = listen();
         JSONObject params = new JSONObject().put("adhan", test ? "test" : "now");
         if (phone != null) params.put("phone", phone);
         boolean launched = tv.launch(Tv.APP_ID, params);
         log(launched ? "فتحت تلفزيونك للأذان" : "ما قدرت أفتح تلفزيونك (هل التطبيق منزّل؟)");
         if (!launched) { restore(tv, vol); tv.close(); return; }
+        for (int i = 0; i < 40 && wanted < 0; i++) Thread.sleep(200);   // up to 8 s for the TV's setting
+        int level = wanted >= 0 ? wanted : p.volume();
+        tv.setMute(false);
+        tv.setVolume(level);
+        log("الصوت " + Times.arabic(String.valueOf(level)) + (wanted >= 0 ? " (من إعدادات الشاشة)" : "")
+            + (vol != null ? " · كان " + Times.arabic(String.valueOf(vol[0])) : ""));
 
         // 5. wait for the adhan (or until someone switches away)
         long end = System.currentTimeMillis() + p.minutes() * 60_000L;
@@ -133,7 +137,7 @@ public class AdhanService extends Service {
 
         // 6. after it (the volume is checked before it is put back)
         int[] volEnd = tv.volume();
-        boolean volChanged = volEnd != null && volEnd[0] >= 0 && volEnd[0] != p.volume();
+        boolean volChanged = volEnd != null && volEnd[0] >= 0 && volEnd[0] != level;
         if (volChanged) touched = true;   // someone set the volume: keep theirs
         stopListening();
         if (!volChanged) restore(tv, vol);
@@ -148,6 +152,7 @@ public class AdhanService extends Service {
     // ---------------------------------------------------------------- «someone pressed a key on the TV»
 
     private volatile boolean touched;
+    private volatile int wanted = -1;   // the adhan volume from the TV's settings
     private java.net.ServerSocket server;
 
     /** "ip:port" the TV app pings on every key press during the adhan; null if no Wi-Fi address */
@@ -166,8 +171,11 @@ public class AdhanService extends Service {
             new Thread(() -> {
                 while (!ss.isClosed()) {
                     try (java.net.Socket c = ss.accept()) {
-                        if (!touched) log("حدا كبس على ريموت الشاشة");
-                        touched = true;
+                        c.setSoTimeout(3000);
+                        String line = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "UTF-8")).readLine();
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^GET /volume\\?v=(\\d{1,3})").matcher(line == null ? "" : line);
+                        if (m.find()) wanted = Math.min(100, Integer.parseInt(m.group(1)));
+                        else { if (!touched) log("حدا كبس على ريموت الشاشة"); touched = true; }
                         c.getOutputStream().write("HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n".getBytes("UTF-8"));
                     } catch (Exception ignored) {}
                 }
