@@ -117,6 +117,7 @@ public class AdhanService extends Service {
         if (!launched) { restore(tv, vol); tv.close(); return; }
         for (int i = 0; i < 40 && wanted < 0; i++) Thread.sleep(200);   // up to 8 s for the TV's setting
         int level = wanted >= 0 ? wanted : p.volume();
+        if (wanted >= 0) p.edit().putInt("volume", wanted).apply();   // the phone shows the TV's choice too
         tv.setMute(false);
         tv.setVolume(level);
         log("الصوت " + Times.arabic(String.valueOf(level)) + (wanted >= 0 ? " (من إعدادات الشاشة)" : "")
