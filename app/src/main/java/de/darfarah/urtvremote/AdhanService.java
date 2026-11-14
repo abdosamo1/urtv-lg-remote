@@ -60,10 +60,38 @@ public class AdhanService extends Service {
         if (p.clientKey().isEmpty() || prayer < 0) return;
         Tv tv = new Tv();
         try {
-            if (!tv.connect(p.ip()) || tv.register(p.clientKey(), false) == null) return;   // off or away: nothing
-            if (!"Active".equals(tv.powerState())) return;
-            if (Tv.APP_ID.equals(tv.foregroundApp())) return;
-            tv.toast("بعد " + Times.arabic(String.valueOf(mins)) + " دقيقة · أذان " + Times.NAMES[prayer] + " " + Times.clock(adhanAt));
+            log("تذكير " + Times.NAMES[prayer] + " · الشاشة " + p.ip());
+            if (!tv.connect(p.ip()) || tv.register(p.clientKey(), false) == null) { log("الشاشة ما ترد (مطفية؟) · ما في تذكير"); return; }
+            String state = tv.powerState();
+            if (!"Active".equals(state)) { log("الشاشة مطفية (" + state + ") · ما في تذكير"); return; }
+            String before = tv.foregroundApp();
+            if (Tv.APP_ID.equals(before)) { log("تلفزيونك مفتوح · هو بيذكّر لحاله"); return; }
+            String text = "بعد " + Times.arabic(String.valueOf(mins)) + " دقيقة · أذان " + Times.NAMES[prayer] + " " + Times.clock(adhanAt);
+            if (!p.remSound()) { tv.toast(text); log("إشعار بدون صوت فوق " + before); return; }
+            // the sound plays only inside تلفزيونك: open it over the other app, then go back
+            String phone = listen();
+            JSONObject params = new JSONObject().put("remind", text).put("name", Times.NAMES[prayer])
+                .put("time", Times.clock(adhanAt)).put("mins", mins);
+            if (phone != null) params.put("phone", phone);
+            if (!tv.launch(Tv.APP_ID, params)) { tv.toast(text); log("ما قدرت أفتح تلفزيونك · إشعار بس"); return; }
+            log("فتحت تلفزيونك للتذكير فوق " + before);
+            long end = System.currentTimeMillis() + 58_000;   // the sound is ~50 s
+            String now = Tv.APP_ID;
+            Thread.sleep(8000);
+            while (System.currentTimeMillis() < end) {
+                Thread.sleep(5000);
+                if (!tv.isOpen() && !(tv.connect(p.ip()) && tv.register(p.clientKey(), false) != null)) continue;
+                now = tv.foregroundApp();
+                if (!now.isEmpty() && !Tv.APP_ID.equals(now)) break;
+            }
+            if (!tv.isOpen() && !(tv.connect(p.ip()) && tv.register(p.clientKey(), false) != null)) return;
+            now = tv.foregroundApp();
+            stopListening();
+            if (!Tv.APP_ID.equals(now) && !now.isEmpty()) { log("انتهى · غيّرت التطبيق"); return; }
+            if (touched) { log("انتهى · حدا استعمل الشاشة، تركت تلفزيونك"); return; }
+            if (p.backToApp() && !before.isEmpty()) { tv.launch(before, null); log("انتهى · رجعت لـ " + before); }
+        } catch (Exception e) {
+            log("خطأ بالتذكير: " + e);
         } finally {
             tv.close();
         }
@@ -72,7 +100,15 @@ public class AdhanService extends Service {
     private final StringBuilder logText = new StringBuilder();
 
     private void log(String line) {
-        if (logText.length() > 0) logText.append('\n');
+        if (logText.length() == 0) {
+            String old = new Prefs(this).lastRun();
+            if (!old.isEmpty()) {
+                String[] ls = old.split("\n");
+                int from = Math.max(0, ls.length - 40);
+                for (int i = from; i < ls.length; i++) logText.append(ls[i]).append('\n');
+                logText.append("———\n");
+            }
+        } else logText.append('\n');
         logText.append(Times.clock(System.currentTimeMillis())).append("  ").append(line);
         new Prefs(this).edit().putString("lastRun", logText.toString()).apply();
     }
@@ -197,6 +233,8 @@ public class AdhanService extends Service {
                             wanted = Math.min(100, Integer.parseInt(m.group(1)));
                             java.util.regex.Matcher r = java.util.regex.Pattern.compile("[?&]r=(\\d{1,3})").matcher(line);
                             if (r.find()) new Prefs(this).edit().putInt("reminder", Math.min(120, Integer.parseInt(r.group(1)))).apply();   // the TV's choice
+                            java.util.regex.Matcher snd = java.util.regex.Pattern.compile("[?&]s=([01])").matcher(line);
+                            if (snd.find()) new Prefs(this).edit().putBoolean("remSound", "1".equals(snd.group(1))).apply();
                             java.util.regex.Matcher f = java.util.regex.Pattern.compile("[?&]f=([01])").matcher(line);
                             if (f.find()) new Prefs(this).edit().putBoolean("remFajr", "1".equals(f.group(1))).apply();
                         }
