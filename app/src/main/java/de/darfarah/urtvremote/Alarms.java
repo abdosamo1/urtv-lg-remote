@@ -56,7 +56,7 @@ final class Alarms {
         Intent base = new Intent(c, AlarmReceiver.class).setAction(REMIND);
         int r = p.reminder();
         long now = System.currentTimeMillis();
-        long[] n = r > 0 ? Times.next(Times.read(c), now + r * 60_000L + 20_000L, p.fajr()) : null;
+        long[] n = r > 0 ? Times.next(Times.read(c), now + r * 60_000L + 20_000L, p.remFajr()) : null;
         if (n == null) { am.cancel(PendingIntent.getBroadcast(c, 9, base, flags)); return; }
         long at = n[0] - r * 60_000L;
         PendingIntent pi = PendingIntent.getBroadcast(c, 9,

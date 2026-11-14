@@ -197,6 +197,8 @@ public class AdhanService extends Service {
                             wanted = Math.min(100, Integer.parseInt(m.group(1)));
                             java.util.regex.Matcher r = java.util.regex.Pattern.compile("[?&]r=(\\d{1,3})").matcher(line);
                             if (r.find()) new Prefs(this).edit().putInt("reminder", Math.min(120, Integer.parseInt(r.group(1)))).apply();   // the TV's choice
+                            java.util.regex.Matcher f = java.util.regex.Pattern.compile("[?&]f=([01])").matcher(line);
+                            if (f.find()) new Prefs(this).edit().putBoolean("remFajr", "1".equals(f.group(1))).apply();
                         }
                         else { if (!touched) log("حدا كبس على ريموت الشاشة"); touched = true; }
                         c.getOutputStream().write("HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n".getBytes("UTF-8"));

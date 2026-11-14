@@ -22,6 +22,7 @@ final class Prefs {
     boolean offAfter() { return sp.getBoolean("offAfter", true); }
     boolean backToApp() { return sp.getBoolean("backToApp", true); }
     int minutes() { return sp.getInt("minutes", 5); }
+    boolean remFajr() { return sp.getBoolean("remFajr", false); }   // the reminder before Fajr too
     int reminder() { return sp.getInt("reminder", 30); }   // minutes before the adhan, 0 = off
     String devToken() { return sp.getString("devToken", ""); }
 
