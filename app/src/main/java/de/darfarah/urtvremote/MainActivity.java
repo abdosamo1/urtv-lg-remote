@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     private Prefs p;
     private LinearLayout root;
     private TextView status, last;
-    private EditText ip, mac, mosque, volume, minutes, token;
+    private EditText ip, mac, mosque, volume, minutes, reminder, token;
     private Switch adhanOn, fajr, offAfter, backToApp;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
         fajr = toggle("أذان الفجر (شغّله كمان بإعدادات الشاشة)", p.fajr());
         volume = field("مستوى الصوت (إذا ما وصل من إعدادات الشاشة)", String.valueOf(p.volume()), InputType.TYPE_CLASS_NUMBER);
         minutes = field("مدة الأذان بالدقائق (بعدها يرجع كل شي)", String.valueOf(p.minutes()), InputType.TYPE_CLASS_NUMBER);
+        reminder = field("تذكير على الشاشة قبل الأذان بالدقائق (0 = متوقف)", String.valueOf(p.reminder()), InputType.TYPE_CLASS_NUMBER);
         offAfter = toggle("طفّي الشاشة بعد الأذان إذا كانت مطفية", p.offAfter());
         backToApp = toggle("رجّع التطبيق اللي كان شغّال", p.backToApp());
 
@@ -98,6 +99,8 @@ public class MainActivity extends Activity {
         status.setText("الأذان القادم: " + p.nextAdhan() + "\nالشاشة: " + paired + "\nوضع المطوّر: " + dev);
         last.setText(p.lastRun().isEmpty() ? "—" : p.lastRun());
         mac.setText(p.mac());
+        if (!reminder.hasFocus()) reminder.setText(String.valueOf(p.reminder()));   // may come from the TV's settings
+        if (!volume.hasFocus()) volume.setText(String.valueOf(p.volume()));
     }
 
     private void save() {
@@ -112,6 +115,7 @@ public class MainActivity extends Activity {
             .putBoolean("fajr", fajr.isChecked())
             .putInt("volume", clamp(volume.getText().toString(), 10, 0, 100))
             .putInt("minutes", clamp(minutes.getText().toString(), 5, 1, 15))
+            .putInt("reminder", clamp(reminder.getText().toString(), 30, 0, 120))
             .putBoolean("offAfter", offAfter.isChecked())
             .putBoolean("backToApp", backToApp.isChecked())
             .putString("devToken", token.getText().toString().trim())

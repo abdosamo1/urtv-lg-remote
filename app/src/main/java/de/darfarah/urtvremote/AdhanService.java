@@ -26,7 +26,10 @@ public class AdhanService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         final int prayer = intent == null ? -1 : intent.getIntExtra("prayer", -1);
         final boolean test = intent != null && intent.getBooleanExtra("test", false);
-        startForeground(1, note(test ? "تجربة الأذان على الشاشة…" : "الأذان على الشاشة…"));
+        final boolean remind = intent != null && intent.getBooleanExtra("remind", false);
+        final long adhanAt = intent == null ? 0 : intent.getLongExtra("adhanAt", 0);
+        final int mins = intent == null ? 30 : intent.getIntExtra("minutes", 30);
+        startForeground(1, note(remind ? "تذكير بالأذان على الشاشة…" : test ? "تجربة الأذان على الشاشة…" : "الأذان على الشاشة…"));
         new Thread(() -> {
             PowerManager.WakeLock wl = null;
             WifiManager.WifiLock wifi = null;
@@ -36,7 +39,7 @@ public class AdhanService extends Service {
                 wl.acquire(15 * 60_000L);
                 WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) { wifi = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "urtvremote:adhan"); wifi.acquire(); }
-                run(prayer, test);
+                if (remind) remind(prayer, adhanAt, mins); else run(prayer, test);
             } catch (Throwable t) {
                 log("خطأ: " + t);
             } finally {
@@ -49,6 +52,21 @@ public class AdhanService extends Service {
             }
         }).start();
         return START_NOT_STICKY;
+    }
+
+    /** Before the adhan: a toast on the TV, over any app, only if it is on. Not when تلفزيونك is in front (it shows its own). */
+    private void remind(int prayer, long adhanAt, int mins) {
+        Prefs p = new Prefs(this);
+        if (p.clientKey().isEmpty() || prayer < 0) return;
+        Tv tv = new Tv();
+        try {
+            if (!tv.connect(p.ip()) || tv.register(p.clientKey(), false) == null) return;   // off or away: nothing
+            if (!"Active".equals(tv.powerState())) return;
+            if (Tv.APP_ID.equals(tv.foregroundApp())) return;
+            tv.toast("بعد " + Times.arabic(String.valueOf(mins)) + " دقيقة · أذان " + Times.NAMES[prayer] + " " + Times.clock(adhanAt));
+        } finally {
+            tv.close();
+        }
     }
 
     private final StringBuilder logText = new StringBuilder();
@@ -175,7 +193,11 @@ public class AdhanService extends Service {
                         c.setSoTimeout(3000);
                         String line = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), "UTF-8")).readLine();
                         java.util.regex.Matcher m = java.util.regex.Pattern.compile("^GET /volume\\?v=(\\d{1,3})").matcher(line == null ? "" : line);
-                        if (m.find()) wanted = Math.min(100, Integer.parseInt(m.group(1)));
+                        if (m.find()) {
+                            wanted = Math.min(100, Integer.parseInt(m.group(1)));
+                            java.util.regex.Matcher r = java.util.regex.Pattern.compile("[?&]r=(\\d{1,3})").matcher(line);
+                            if (r.find()) new Prefs(this).edit().putInt("reminder", Math.min(120, Integer.parseInt(r.group(1)))).apply();   // the TV's choice
+                        }
                         else { if (!touched) log("حدا كبس على ريموت الشاشة"); touched = true; }
                         c.getOutputStream().write("HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n".getBytes("UTF-8"));
                     } catch (Exception ignored) {}

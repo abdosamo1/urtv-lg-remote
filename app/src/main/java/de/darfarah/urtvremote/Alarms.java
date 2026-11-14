@@ -13,6 +13,7 @@ final class Alarms {
     private Alarms() {}
 
     static final String ADHAN = "de.darfarah.urtvremote.ADHAN";
+    static final String REMIND = "de.darfarah.urtvremote.REMIND";
 
     private static PendingIntent pi(Context c, int prayer, long at) {
         Intent i = new Intent(c, AlarmReceiver.class).setAction(ADHAN).putExtra("prayer", prayer).putExtra("at", at);
@@ -46,6 +47,22 @@ final class Alarms {
             else am.setExact(AlarmManager.RTC_WAKEUP, n[0], alarm);
         }
         p.edit().putString("nextAdhan", Times.NAMES[(int) n[1]] + " · " + Times.clock(n[0])).apply();
+        scheduleReminder(c, am, p);
+    }
+
+    /** The reminder before the next adhan: a notice on the TV if it is on (it never wakes it). */
+    private static void scheduleReminder(Context c, AlarmManager am, Prefs p) {
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        Intent base = new Intent(c, AlarmReceiver.class).setAction(REMIND);
+        int r = p.reminder();
+        long now = System.currentTimeMillis();
+        long[] n = r > 0 ? Times.next(Times.read(c), now + r * 60_000L + 20_000L, p.fajr()) : null;
+        if (n == null) { am.cancel(PendingIntent.getBroadcast(c, 9, base, flags)); return; }
+        long at = n[0] - r * 60_000L;
+        PendingIntent pi = PendingIntent.getBroadcast(c, 9,
+            base.putExtra("prayer", (int) n[1]).putExtra("adhanAt", n[0]).putExtra("at", at).putExtra("minutes", r), flags);
+        if (Build.VERSION.SDK_INT >= 23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+        else am.setExact(AlarmManager.RTC_WAKEUP, at, pi);
     }
 
     /** Refresh the timetable and Developer Mode if due, then re-arm; off the main thread. */
